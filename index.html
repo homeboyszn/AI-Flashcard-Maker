@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Flashcard Maker</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+      --success: #10b981;
+      --success-hover: #059669;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+      --warning: #f59e0b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --border: #334155;
+      --error-bg: #450a0a;
+      --error-border: #991b1b;
+      --error-text: #fca5a5;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 2rem; min-height: 100vh; }
+    .container { max-width: 950px; margin: 0 auto; display: flex; flex-direction: column; gap: 2rem; }
+
+    header h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
+    header p { color: var(--text-muted); }
+
+    .input-section { display: flex; flex-direction: column; gap: 1rem; background: var(--card-bg); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border); }
+    .row { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .row > * { flex: 1; min-width: 200px; }
+
+    input[type="password"], select, textarea {
+      width: 100%; padding: 0.75rem; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 0.95rem; outline: none;
+    }
+    textarea { height: 130px; resize: vertical; }
+    
+    .button-group { display: flex; gap: 1rem; flex-wrap: wrap; }
+    button {
+      padding: 0.75rem 1.5rem; background: var(--accent); color: white; border: none;
+      border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s;
+    }
+    button:hover { background: var(--accent-hover); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    button.btn-export { background: var(--success); display: none; }
+    button.btn-export:hover { background: var(--success-hover); }
+
+    button.btn-clear { background: var(--danger); display: none; }
+    button.btn-clear:hover { background: var(--danger-hover); }
+
+    /* Category Filter Bar */
+    .filter-section {
+      display: none;
+      flex-direction: column;
+      gap: 0.75rem;
+      background: var(--card-bg);
+      padding: 1rem 1.5rem;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    .filter-title { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
+    .filter-chips { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .chip {
+      padding: 0.4rem 0.8rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--text); }
+    .chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+    .error-box {
+      display: none; background: var(--error-bg); border: 1px solid var(--error-border);
+      color: var(--error-text); padding: 1rem; border-radius: 8px; font-size: 0.9rem; line-height: 1.4;
+    }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; }
+
+    /* Flashcard Flip Physics */
+    .flashcard {
+      background-color: transparent; width: 100%; height: 240px;
+      perspective: 1000px; cursor: pointer;
+    }
+    .flashcard-inner {
+      position: relative; width: 100%; height: 100%; text-align: center;
+      transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      transform-style: preserve-3d;
+    }
+    .flashcard.flipped .flashcard-inner { transform: rotateY(180deg); }
+    .flashcard-front, .flashcard-back {
+      position: absolute; width: 100%; height: 100%; backface-visibility: hidden;
+      border-radius: 12px; border: 1px solid var(--border); padding: 1.25rem;
+      display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
+    }
+    .flashcard-front { background: var(--card-bg); color: var(--text); }
+    .flashcard-back { background: var(--card-bg); border-color: var(--accent); color: white; transform: rotateY(180deg); }
+    
+    .card-header { display: flex; width: 100%; justify-content: space-between; align-items: center; }
+    .badge-group { display: flex; gap: 0.4rem; align-items: center; }
+    
+    .badge { font-size: 0.7rem; text-transform: uppercase; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; }
+    .badge-category { background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
+    
+    .badge-easy { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-medium { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .badge-hard { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+    .due-badge { font-size: 0.75rem; color: var(--warning); font-weight: 600; }
+
+    /* Controls inside Card Back */
+    .card-content { margin: auto 0; font-size: 0.95rem; line-height: 1.4; }
+    
+    .card-actions { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 0.5rem; }
+    
+    .srs-buttons { display: flex; gap: 0.25rem; }
+    .srs-btn {
+      padding: 0.3rem 0.5rem; font-size: 0.75rem; border-radius: 6px; border: none; font-weight: 600; cursor: pointer;
+    }
+    .srs-again { background: var(--danger); color: white; }
+    .srs-good { background: var(--warning); color: white; }
+    .srs-easy { background: var(--success); color: white; }
+
+    /* Text-to-Speech Button */
+    .speech-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid var(--border);
+      color: white;
+      padding: 0.3rem 0.5rem;
+      font-size: 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .speech-btn:hover { background: rgba(255, 255, 255, 0.25); }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>AI Flashcard Maker</h1>
+    <p>Generate 10+ categorized flashcards with SM-2 Spaced Repetition and category filtering.</p>
+  </header>
+
+  <section class="input-section">
+    <div class="row">
+      <input type="password" id="apiKey" placeholder="Enter Gemini API Key (AI Studio)..." />
+      <select id="modelSelect">
+        <option value="gemini-2.5-flash">Gemini 2.5 Flash (Default)</option>
+        <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+      </select>
+    </div>
+    <textarea id="notes" placeholder="Paste your raw lecture notes, text, or concepts here..."></textarea>
+    <div class="button-group">
+      <button id="generateBtn" onclick="generateCards()">Generate 10 Flashcards</button>
+      <button id="exportBtn" class="btn-export" onclick="exportToAnkiCSV()">📥 Export to Anki CSV</button>
+      <button id="clearBtn" class="btn-clear" onclick="clearSavedCards()">🗑️ Clear Saved Deck</button>
+    </div>
+  </section>
+
+  <!-- Category Filter Bar -->
+  <section id="filterSection" class="filter-section">
+    <div class="filter-title">Filter by Category</div>
+    <div id="filterChips" class="filter-chips"></div>
+  </section>
+
+  <div id="errorBox" class="error-box"></div>
+  <section class="grid" id="cardContainer"></section>
+</div>
+
+<script>
+let currentFlashcards = [];
+let activeCategoryFilter = "All";
+
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('saved_flashcards');
+  if (saved) {
+    try {
+      currentFlashcards = JSON.parse(saved);
+      if (currentFlashcards.length > 0) {
+        setupCategoryFilters();
+        renderCards();
+        toggleActionButtons(true);
+      }
+    } catch (e) {
+      console.error("Error loading saved cards:", e);
+    }
+  }
+});
+
+async function generateCards() {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const notes = document.getElementById('notes').value.trim();
+  const selectedModel = document.getElementById('modelSelect').value;
+  const btn = document.getElementById('generateBtn');
+  const container = document.getElementById('cardContainer');
+
+  if (!apiKey || !notes) {
+    showError('Please enter both an API key and your notes.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerText = "Generating 10 Cards...";
+  toggleActionButtons(false);
+  container.innerHTML = "";
+  hideError();
+
+  const payload = {
+    contents: [{
+      parts: [{
+        text: `Extract key concepts from these notes and convert them into at least 10 thorough Q&A flashcards. Group concepts into logical categories and estimate difficulty:\n\n${notes}`
+      }]
+    }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: "ARRAY",
+        description: "List of 10 flashcard question and answer pairs",
+        items: {
+          type: "OBJECT",
+          properties: {
+            question: { type: "STRING", description: "Concise concept or question" },
+            answer: { type: "STRING", description: "Clear, factual answer" },
+            category: { type: "STRING", description: "Specific topic category or domain" },
+            difficulty: { type: "STRING", enum: ["Easy", "Medium", "Hard"], description: "Estimated card difficulty" }
+          },
+          required: ["question", "answer", "category", "difficulty"]
+        }
+      }
+    }
+  };
+
+  try {
+    let data = await fetchGemini(selectedModel, apiKey, payload);
+
+    if (data.error && selectedModel === 'gemini-2.5-flash') {
+      console.warn("Retrying with gemini-3.5-flash...");
+      data = await fetchGemini('gemini-3.5-flash', apiKey, payload);
+    }
+
+    if (data.error) throw new Error(data.error.message || "API request failed");
+
+    const rawCards = JSON.parse(data.candidates[0].content.parts[0].text);
+
+    // Initialize SM-2 parameters for each flashcard
+    currentFlashcards = rawCards.map((card, index) => ({
+      id: index,
+      question: card.question,
+      answer: card.answer,
+      category: card.category || "General",
+      difficulty: card.difficulty || "Medium",
+      interval: 0,
+      repetition: 0,
+      efactor: 2.5,
+      dueDate: new Date().toISOString()
+    }));
+
+    activeCategoryFilter = "All";
+    saveState();
+    setupCategoryFilters();
+    renderCards();
+    toggleActionButtons(true);
+  } catch (err) {
+    showError(`<strong>API Error:</strong> ${escapeHtml(err.message)}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerText = "Generate 10 Flashcards";
+  }
+}
+
+async function fetchGemini(model, key, payload) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  return await response.json();
+}
+
+function setupCategoryFilters() {
+  const filterSection = document.getElementById('filterSection');
+  const chipsContainer = document.getElementById('filterChips');
+  
+  const categories = ["All", ...new Set(currentFlashcards.map(c => c.category))];
+  
+  chipsContainer.innerHTML = "";
+  categories.forEach(cat => {
+    const chip = document.createElement('div');
+    chip.className = `chip ${cat === activeCategoryFilter ? 'active' : ''}`;
+    chip.innerText = cat;
+    chip.onclick = () => {
+      activeCategoryFilter = cat;
+      setupCategoryFilters();
+      renderCards();
+    };
+    chipsContainer.appendChild(chip);
+  });
+
+  filterSection.style.display = categories.length > 1 ? 'flex' : 'none';
+}
+
+function renderCards() {
+  const container = document.getElementById('cardContainer');
+  container.innerHTML = "";
+
+  const filteredCards = activeCategoryFilter === "All" 
+    ? currentFlashcards 
+    : currentFlashcards.filter(c => c.category === activeCategoryFilter);
+
+  filteredCards.forEach(card => {
+    const cardEl = document.createElement('div');
+    cardEl.className = 'flashcard';
+    cardEl.onclick = () => cardEl.classList.toggle('flipped');
+
+    const dueText = getDueText(card.dueDate);
+    const diffClass = `badge-${(card.difficulty || 'medium').toLowerCase()}`;
+
+    cardEl.innerHTML = `
+      <div class="flashcard-inner">
+        <div class="flashcard-front">
+          <div class="card-header">
+            <div class="badge-group">
+              <span class="badge badge-category">${escapeHtml(card.category)}</span>
+              <span class="badge ${diffClass}">${escapeHtml(card.difficulty)}</span>
+            </div>
+            <span class="due-badge">${dueText}</span>
+          </div>
+          <p class="card-content">${escapeHtml(card.question)}</p>
+          <span style="font-size:0.75rem; color:var(--text-muted);">Click to Flip</span>
+        </div>
+        <div class="flashcard-back">
+          <div class="card-header">
+            <span class="badge badge-category">${escapeHtml(card.category)}</span>
+          </div>
+          <p class="card-content">${escapeHtml(card.answer)}</p>
+          <div class="card-actions" onclick="event.stopPropagation()">
+            <button class="speech-btn" onclick="speakText('${escapeHtml(card.answer)}')">🔊 Read</button>
+            <div class="srs-buttons">
+              <button class="srs-btn srs-again" onclick="rateCard(${card.id}, 1)">Again</button>
+              <button class="srs-btn srs-good" onclick="rateCard(${card.id}, 3)">Good</button>
+              <button class="srs-btn srs-easy" onclick="rateCard(${card.id}, 5)">Easy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    container.appendChild(cardEl);
+  });
+}
+
+function rateCard(id, quality) {
+  const card = currentFlashcards.find(c => c.id === id);
+  if (!card) return;
+
+  if (quality >= 3) {
+    if (card.repetition === 0) {
+      card.interval = 1;
+    } else if (card.repetition === 1) {
+      card.interval = 6;
+    } else {
+      card.interval = Math.round(card.interval * card.efactor);
+    }
+    card.repetition += 1;
+  } else {
+    card.repetition = 0;
+    card.interval = 1;
+  }
+
+  card.efactor = card.efactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
+  if (card.efactor < 1.3) card.efactor = 1.3;
+
+  const nextDate = new Date();
+  nextDate.setDate(nextDate.getDate() + card.interval);
+  card.dueDate = nextDate.toISOString();
+
+  saveState();
+  renderCards();
+}
+
+function getDueText(dueDateStr) {
+  if (!dueDateStr) return "New";
+  const now = new Date();
+  const due = new Date(dueDateStr);
+  const diffDays = Math.ceil((due - now) / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) return "Due Now";
+  if (diffDays === 1) return "Due Tomorrow";
+  return `Due: ${diffDays}d`;
+}
+
+function speakText(text) {
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 0.95;
+  window.speechSynthesis.speak(utterance);
+}
+
+function saveState() {
+  localStorage.setItem('saved_flashcards', JSON.stringify(currentFlashcards));
+}
+
+function exportToAnkiCSV() {
+  if (!currentFlashcards || currentFlashcards.length === 0) return;
+
+  let csvContent = "Question,Answer,Category,Difficulty\n";
+  currentFlashcards.forEach(card => {
+    const q = `"${card.question.replace(/"/g, '""')}"`;
+    const a = `"${card.answer.replace(/"/g, '""')}"`;
+    const c = `"${card.category.replace(/"/g, '""')}"`;
+    const d = `"${card.difficulty.replace(/"/g, '""')}"`;
+    csvContent += `${q},${a},${c},${d}\n`;
+  });
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', 'anki_flashcards.csv');
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function clearSavedCards() {
+  localStorage.removeItem('saved_flashcards');
+  currentFlashcards = [];
+  document.getElementById('cardContainer').innerHTML = "";
+  document.getElementById('filterSection').style.display = 'none';
+  toggleActionButtons(false);
+}
+
+function toggleActionButtons(show) {
+  const display = show ? 'inline-block' : 'none';
+  document.getElementById('exportBtn').style.display = display;
+  document.getElementById('clearBtn').style.display = display;
+}
+
+function showError(msg) {
+  const box = document.getElementById('errorBox');
+  box.innerHTML = msg;
+  box.style.display = 'block';
+}
+
+function hideError() {
+  const box = document.getElementById('errorBox');
+  box.style.display = 'none';
+  box.innerHTML = '';
+}
+
+function escapeHtml(str) {
+  return str.replace(/[&<>"']/g, m => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+  })[m]);
+}
+</script>
+
+</body>
+</html>
